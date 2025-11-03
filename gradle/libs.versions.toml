@@ -7,6 +7,7 @@ composeCompiler = "1.5.10"
 room = "2.6.1"
 workmanager = "2.9.0"
 viewmodel = "2.7.0"
+navigation = "2.7.7"
 
 # Versões de bibliotecas padrão
 activity-compose = "1.9.0"
@@ -33,6 +34,7 @@ androidx-compose-ui = { group = "androidx.compose.ui", name = "ui" }
 androidx-compose-ui-graphics = { group = "androidx.compose.ui", name = "ui-graphics" }
 androidx-compose-ui-tooling-preview = { group = "androidx.compose.ui", name = "ui-tooling-preview" }
 androidx-compose-material3 = { group = "androidx.compose.material3", name = "material3" }
+navigation-compose = { group = "androidx.navigation", name = "navigation-compose", version.ref = "navigation" }
 
 [plugins]
 # Nossos plugins
