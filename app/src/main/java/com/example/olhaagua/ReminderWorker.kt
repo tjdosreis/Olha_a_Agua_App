@@ -18,7 +18,7 @@ import kotlinx.coroutines.flow.first
 import java.util.Calendar
 import java.util.Date
 
-// Este é o nosso "Trabalhador" (VERSÃO FINAL COM O ÍCONE CORRETO)
+// Este é o nosso "Trabalhador" (VERSÃO ATUALIZADA COM PERÍODO ATIVO)
 class ReminderWorker(
     private val context: Context,
     workerParams: WorkerParameters
@@ -34,17 +34,36 @@ class ReminderWorker(
         val settingsRepo = SettingsRepository(context)
         val waterLogDao = AppDatabase.getDatabase(context).waterLogDao()
 
-        // ... (lógica para pegar hojeInicio e hojeFim) ...
+        // Pega o calendário para definir início e fim do dia
         val calendar = Calendar.getInstance()
         calendar.set(Calendar.HOUR_OF_DAY, 0); calendar.set(Calendar.MINUTE, 0); calendar.set(Calendar.SECOND, 0); calendar.set(Calendar.MILLISECOND, 0)
         val hojeInicio = calendar.time
         calendar.set(Calendar.HOUR_OF_DAY, 23); calendar.set(Calendar.MINUTE, 59); calendar.set(Calendar.SECOND, 59); calendar.set(Calendar.MILLISECOND, 999)
         val hojeFim = calendar.time
 
+        // --- NOSSA NOVA MUDANÇA (Início) ---
+
+        // 1. Pega os limites salvos (em minutos)
+        val inicioMinutos = settingsRepo.periodoAtivoInicioFlow.first()
+        val fimMinutos = settingsRepo.periodoAtivoFimFlow.first()
+
+        // 2. Pega a hora atual (em minutos)
+        // Precisamos pegar uma nova instância para ter a hora/minuto corretos de AGORA
+        val calendarAgora = Calendar.getInstance()
+        val agoraMinutos = calendarAgora.get(Calendar.HOUR_OF_DAY) * 60 + calendarAgora.get(Calendar.MINUTE)
+
+        // 3. Verifica se estamos DENTRO do período ativo
+        // (ex: 480 (8h) e 1320 (22h). Se 'agoraMinutos' for 500 (8h20), 500 in 480..1320 = true)
+        val isPeriodoAtivo = agoraMinutos in inicioMinutos..fimMinutos
+
+        // --- FIM DA MUDANÇA ---
+
         val metaDiaria = settingsRepo.metaDiariaFlow.first()
         val totalBebidoHoje = waterLogDao.getTotalAmountForPeriod(hojeInicio, hojeFim).first() ?: 0
 
-        if (totalBebidoHoje < metaDiaria) {
+        // --- CONDIÇÃO ATUALIZADA ---
+        // Só envia notificação se a meta não foi batida E estamos no período ativo
+        if (totalBebidoHoje < metaDiaria && isPeriodoAtivo) {
             enviarNotificacao(totalBebidoHoje, metaDiaria)
         }
 
@@ -67,7 +86,7 @@ class ReminderWorker(
             notificationManager.createNotificationChannel(channel)
         }
 
-        // --- 1. CRIA A AÇÃO DO BOTÃO ---
+        // --- 1. CRIA AÇÃO DO BOTÃO ---
         val add250Intent = Intent(context, NotificationActionReceiver::class.java).apply {
             action = NotificationActionReceiver.ACTION_ADD_250
         }
@@ -80,29 +99,20 @@ class ReminderWorker(
         )
 
         // --- 2. PREPARA OS ÍCONES ---
-
-        // Pega nosso ícone colorido (mipmap) e transforma em Bitmap
         val largeIcon = BitmapFactory.decodeResource(
             context.resources,
             R.mipmap.ic_launcher_round // Pega o ícone redondo do app
         )
 
-        // --- 3. CONSTRÓI A NOTIFICAÇÃO (COM O ÍCONE CORRETO) ---
-
+        // --- 3. CONSTRÓI A NOTIFICAÇÃO ---
         val notificacao = NotificationCompat.Builder(context, CHANNEL_ID)
-            // --- O CONSERTO (Ícone Pequeno) ---
-            // Usa a silhueta do copo que criamos manualmente
             .setSmallIcon(R.drawable.ic_notification_copo)
-
-            // --- O POLIMENTO (Ícone Grande) ---
             .setLargeIcon(largeIcon) // <-- Usa o ícone colorido do app
-
             .setContentTitle("Hora de se hidratar!")
             .setContentText("Sua meta é $meta ml. Você já bebeu $total ml hoje.")
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
             .addAction(
-                // Reusa a silhueta do copo no botão
                 R.drawable.ic_notification_copo,
                 "+250 ml",
                 add250PendingIntent

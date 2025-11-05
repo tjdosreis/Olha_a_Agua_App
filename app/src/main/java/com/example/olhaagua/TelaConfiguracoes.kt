@@ -3,6 +3,7 @@ package com.example.olhaagua
 import android.app.Application
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -27,6 +28,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
@@ -46,8 +48,10 @@ import androidx.work.PeriodicWorkRequest
 import androidx.work.WorkManager
 import java.util.concurrent.TimeUnit
 
+// --- A CORREÇÃO ESTÁ AQUI ---
+import com.example.olhaagua.ReminderWorker // <-- O import que faltava
+
 // --- O CÉREBRO DA TELA (VIEWMODEL) ---
-// (Sem mudanças aqui)
 class TelaConfiguracoesViewModel(
     private val settingsRepo: SettingsRepository
 ) : ViewModel() {
@@ -57,6 +61,14 @@ class TelaConfiguracoesViewModel(
 
     val frequenciaState: StateFlow<Int> = settingsRepo.frequenciaLembreteFlow
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 90)
+
+    // --- NOSSA NOVA MUDANÇA (Início) ---
+    val inicioAtivoState: StateFlow<Int> = settingsRepo.periodoAtivoInicioFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 8 * 60) // 8h
+
+    val fimAtivoState: StateFlow<Int> = settingsRepo.periodoAtivoFimFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 22 * 60) // 22h
+    // --- FIM DA MUDANÇA ---
 
     fun salvarMetaDiaria(meta: Int) {
         viewModelScope.launch {
@@ -69,6 +81,14 @@ class TelaConfiguracoesViewModel(
             settingsRepo.salvarFrequencia(minutos)
         }
     }
+
+    // --- NOSSA NOVA MUDANÇA (Início) ---
+    fun salvarPeriodoAtivo(inicioMinutos: Int, fimMinutos: Int) {
+        viewModelScope.launch {
+            settingsRepo.salvarPeriodoAtivo(inicioMinutos, fimMinutos)
+        }
+    }
+    // --- FIM DA MUDANÇA ---
 }
 
 // --- A TELA EM SI (COMPOSABLE - VERSÃO FINAL) ---
@@ -84,12 +104,21 @@ fun TelaConfiguracoes(
 ) {
     val metaDiariaAtual = viewModel.metaDiariaState.collectAsState()
     val frequenciaAtual = viewModel.frequenciaState.collectAsState()
+    val inicioAtivoAtual = viewModel.inicioAtivoState.collectAsState() // Em minutos (ex: 480)
+    val fimAtivoAtual = viewModel.fimAtivoState.collectAsState()     // Em minutos (ex: 1320)
 
+    // Converte minutos para horas (String) para os TextFields
     var metaTexto by remember(metaDiariaAtual.value) {
         mutableStateOf(metaDiariaAtual.value.toString())
     }
     var frequenciaTexto by remember(frequenciaAtual.value) {
         mutableStateOf(frequenciaAtual.value.toString())
+    }
+    var inicioTexto by remember(inicioAtivoAtual.value) {
+        mutableStateOf((inicioAtivoAtual.value / 60).toString()) // ex: 480 / 60 = "8"
+    }
+    var fimTexto by remember(fimAtivoAtual.value) { // <-- Corrigido da última vez
+        mutableStateOf((fimAtivoAtual.value / 60).toString()) // ex: 1320 / 60 = "22"
     }
 
     val scope = rememberCoroutineScope()
@@ -135,13 +164,47 @@ fun TelaConfiguracoes(
                 modifier = Modifier.fillMaxWidth()
             )
 
-            // --- SUA SUGESTÃO (VALIDAÇÃO) ---
             Text(
                 text = "O Android exige um mínimo de 15 minutos para lembretes periódicos.",
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant // Cor mais suave
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-            // --- FIM DA SUGESTÃO ---
+
+            // --- NOSSA NOVA MUDANÇA (Início) ---
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = "Período Ativo (Não incomodar)",
+                style = MaterialTheme.typography.titleMedium
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                OutlinedTextField(
+                    value = inicioTexto,
+                    onValueChange = { inicioTexto = it },
+                    label = { Text("Início (HH)") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.weight(1f)
+                )
+                Text(text = "até")
+                OutlinedTextField(
+                    value = fimTexto,
+                    onValueChange = { fimTexto = it },
+                    label = { Text("Fim (HH)") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.weight(1f)
+                )
+            }
+            Text(
+                text = "Insira as horas no formato 24h (ex: 8 para 8h, 22 para 22h).",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            // --- FIM DA MUDANÇA ---
+
 
             Spacer(modifier = Modifier.height(16.dp))
 
@@ -151,27 +214,30 @@ fun TelaConfiguracoes(
                     val novaMeta = metaTexto.toIntOrNull() ?: metaDiariaAtual.value
                     var novaFrequencia = frequenciaTexto.toIntOrNull() ?: frequenciaAtual.value
 
-                    // --- VALIDAÇÃO DE 15 MINUTOS ---
                     if (novaFrequencia < 15) {
                         novaFrequencia = 15 // Força o mínimo
                     }
-                    // --- FIM DA VALIDAÇÃO ---
-
                     viewModel.salvarMetaDiaria(novaMeta)
                     viewModel.salvarFrequencia(novaFrequencia)
 
-                    // --- ATUALIZA O WORKMANAGER (CÓDIGO DE PRODUÇÃO) ---
+                    val horaInicio = inicioTexto.toIntOrNull()?.coerceIn(0, 23) ?: (inicioAtivoAtual.value / 60)
+                    val horaFim = fimTexto.toIntOrNull()?.coerceIn(0, 23) ?: (fimAtivoAtual.value / 60)
+                    val inicioMinutos = horaInicio * 60
+                    val fimMinutos = horaFim * 60
 
+                    viewModel.salvarPeriodoAtivo(inicioMinutos, fimMinutos)
+
+                    // --- ATUALIZA O WORKMANAGER (CÓDIGO DE PRODUÇÃO) ---
                     val periodicRequest = PeriodicWorkRequest.Builder(
                         ReminderWorker::class.java,
-                        novaFrequencia.toLong(), // <-- USA O NOVO VALOR!
+                        novaFrequencia.toLong(),
                         TimeUnit.MINUTES
                     )
                         .build()
 
                     WorkManager.getInstance(context).enqueueUniquePeriodicWork(
                         "lembrete-agua-periodico",
-                        ExistingPeriodicWorkPolicy.UPDATE, // <-- "UPDATE" é a chave!
+                        ExistingPeriodicWorkPolicy.UPDATE,
                         periodicRequest
                     )
                     // --- FIM DA ATUALIZAÇÃO ---
