@@ -35,13 +35,25 @@ private val LightColorScheme = lightColorScheme(
 
 @Composable
 fun OlhaAÁguaTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
-    // Dynamic color is available on Android 12+
-    dynamicColor: Boolean = true,
+    // --- NOSSAS NOVAS MUDANÇAS (Início) ---
+    // Removemos 'darkTheme' e 'dynamicColor' dos parâmetros diretos
+    // e recebemos a preferência do usuário
+    temaEscolhido: String = "Sistema",
+    // --- FIM DA MUDANÇA ---
     content: @Composable () -> Unit
 ) {
+    // --- LÓGICA ATUALIZADA ---
+    val darkTheme = when (temaEscolhido) {
+        "Claro" -> false
+        "Escuro" -> true
+        else -> isSystemInDarkTheme() // "Sistema" ou qualquer outro valor
+    }
+
+    val dynamicColor = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+    // --- FIM DA LÓGICA ---
+
     val colorScheme = when {
-        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
+        dynamicColor -> {
             val context = LocalContext.current
             if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
         }

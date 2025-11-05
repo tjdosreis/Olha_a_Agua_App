@@ -21,6 +21,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.FilterChip // <-- Import correto
+import androidx.compose.material3.FilterChipDefaults // <-- Import correto
+import androidx.compose.material.icons.filled.Check // <-- Import correto
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -41,15 +44,11 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-
-// Imports do WorkManager (que vamos precisar)
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.PeriodicWorkRequest
 import androidx.work.WorkManager
 import java.util.concurrent.TimeUnit
-
-// --- A CORREÇÃO ESTÁ AQUI ---
-import com.example.olhaagua.ReminderWorker // <-- O import que faltava
+import com.example.olhaagua.ReminderWorker
 
 // --- O CÉREBRO DA TELA (VIEWMODEL) ---
 class TelaConfiguracoesViewModel(
@@ -62,13 +61,14 @@ class TelaConfiguracoesViewModel(
     val frequenciaState: StateFlow<Int> = settingsRepo.frequenciaLembreteFlow
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 90)
 
-    // --- NOSSA NOVA MUDANÇA (Início) ---
     val inicioAtivoState: StateFlow<Int> = settingsRepo.periodoAtivoInicioFlow
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 8 * 60) // 8h
 
     val fimAtivoState: StateFlow<Int> = settingsRepo.periodoAtivoFimFlow
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 22 * 60) // 22h
-    // --- FIM DA MUDANÇA ---
+
+    val appThemeState: StateFlow<String> = settingsRepo.appThemeFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "Sistema")
 
     fun salvarMetaDiaria(meta: Int) {
         viewModelScope.launch {
@@ -82,13 +82,17 @@ class TelaConfiguracoesViewModel(
         }
     }
 
-    // --- NOSSA NOVA MUDANÇA (Início) ---
     fun salvarPeriodoAtivo(inicioMinutos: Int, fimMinutos: Int) {
         viewModelScope.launch {
             settingsRepo.salvarPeriodoAtivo(inicioMinutos, fimMinutos)
         }
     }
-    // --- FIM DA MUDANÇA ---
+
+    fun salvarTema(tema: String) {
+        viewModelScope.launch {
+            settingsRepo.salvarTema(tema)
+        }
+    }
 }
 
 // --- A TELA EM SI (COMPOSABLE - VERSÃO FINAL) ---
@@ -104,10 +108,13 @@ fun TelaConfiguracoes(
 ) {
     val metaDiariaAtual = viewModel.metaDiariaState.collectAsState()
     val frequenciaAtual = viewModel.frequenciaState.collectAsState()
-    val inicioAtivoAtual = viewModel.inicioAtivoState.collectAsState() // Em minutos (ex: 480)
-    val fimAtivoAtual = viewModel.fimAtivoState.collectAsState()     // Em minutos (ex: 1320)
+    val inicioAtivoAtual = viewModel.inicioAtivoState.collectAsState()
+    val fimAtivoAtual = viewModel.fimAtivoState.collectAsState()
 
-    // Converte minutos para horas (String) para os TextFields
+    val temaAtual = viewModel.appThemeState.collectAsState()
+    var temaSelecionado by remember(temaAtual.value) { mutableStateOf(temaAtual.value) }
+    val opcoesTema = listOf("Sistema", "Claro", "Escuro")
+
     var metaTexto by remember(metaDiariaAtual.value) {
         mutableStateOf(metaDiariaAtual.value.toString())
     }
@@ -115,14 +122,14 @@ fun TelaConfiguracoes(
         mutableStateOf(frequenciaAtual.value.toString())
     }
     var inicioTexto by remember(inicioAtivoAtual.value) {
-        mutableStateOf((inicioAtivoAtual.value / 60).toString()) // ex: 480 / 60 = "8"
+        mutableStateOf((inicioAtivoAtual.value / 60).toString())
     }
-    var fimTexto by remember(fimAtivoAtual.value) { // <-- Corrigido da última vez
-        mutableStateOf((fimAtivoAtual.value / 60).toString()) // ex: 1320 / 60 = "22"
+    var fimTexto by remember(fimAtivoAtual.value) {
+        mutableStateOf((fimAtivoAtual.value / 60).toString())
     }
 
     val scope = rememberCoroutineScope()
-    val context = LocalContext.current // <-- Pega o Contexto
+    val context = LocalContext.current
 
     Scaffold(
         topBar = {
@@ -146,7 +153,8 @@ fun TelaConfiguracoes(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Campo para Meta Diária
+
+            // --- Bloco 1: Meta Diária ---
             OutlinedTextField(
                 value = metaTexto,
                 onValueChange = { metaTexto = it },
@@ -155,7 +163,7 @@ fun TelaConfiguracoes(
                 modifier = Modifier.fillMaxWidth()
             )
 
-            // Campo para Frequência
+            // --- Bloco 2: Frequência ---
             OutlinedTextField(
                 value = frequenciaTexto,
                 onValueChange = { frequenciaTexto = it },
@@ -170,13 +178,12 @@ fun TelaConfiguracoes(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
 
-            // --- NOSSA NOVA MUDANÇA (Início) ---
+            // --- Bloco 3: Período Ativo ---
             Spacer(modifier = Modifier.height(8.dp))
             Text(
                 text = "Período Ativo (Não incomodar)",
                 style = MaterialTheme.typography.titleMedium
             )
-
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -203,19 +210,55 @@ fun TelaConfiguracoes(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+
+            // --- Bloco 4: Aparência (MOVEMOS PARA CÁ) ---
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = "Aparência",
+                style = MaterialTheme.typography.titleMedium
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                opcoesTema.forEach { tema ->
+                    val isSelected = tema == temaSelecionado
+                    FilterChip(
+                        selected = isSelected,
+                        // ESTA LINHA CORRIGE A FUNCIONALIDADE
+                        onClick = { temaSelecionado = tema },
+                        label = { Text(tema) },
+                        enabled = true,
+                        leadingIcon = if (isSelected) {
+                            {
+                                Icon(
+                                    imageVector = Icons.Default.Check,
+                                    contentDescription = "Selecionado",
+                                    modifier = Modifier.padding(start = 4.dp)
+                                )
+                            }
+                        } else {
+                            null
+                        },
+                        // REMOVEMOS A LÓGICA DE 'border' PARA USAR O PADRÃO
+                    )
+                }
+            }
             // --- FIM DA MUDANÇA ---
 
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Botão Salvar (COM O CÓDIGO DE PRODUÇÃO)
+            // Botão Salvar
             Button(
                 onClick = {
+                    viewModel.salvarTema(temaSelecionado)
+
                     val novaMeta = metaTexto.toIntOrNull() ?: metaDiariaAtual.value
                     var novaFrequencia = frequenciaTexto.toIntOrNull() ?: frequenciaAtual.value
 
                     if (novaFrequencia < 15) {
-                        novaFrequencia = 15 // Força o mínimo
+                        novaFrequencia = 15
                     }
                     viewModel.salvarMetaDiaria(novaMeta)
                     viewModel.salvarFrequencia(novaFrequencia)
@@ -227,7 +270,6 @@ fun TelaConfiguracoes(
 
                     viewModel.salvarPeriodoAtivo(inicioMinutos, fimMinutos)
 
-                    // --- ATUALIZA O WORKMANAGER (CÓDIGO DE PRODUÇÃO) ---
                     val periodicRequest = PeriodicWorkRequest.Builder(
                         ReminderWorker::class.java,
                         novaFrequencia.toLong(),
@@ -240,7 +282,6 @@ fun TelaConfiguracoes(
                         ExistingPeriodicWorkPolicy.UPDATE,
                         periodicRequest
                     )
-                    // --- FIM DA ATUALIZAÇÃO ---
 
                     onVoltarClick()
                 },

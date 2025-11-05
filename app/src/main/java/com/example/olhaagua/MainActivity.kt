@@ -6,9 +6,9 @@ import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.activity.compose.rememberLauncherForActivityResult // <-- Vamos precisar no Onboarding
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.enableEdgeToEdge
-import androidx.activity.result.contract.ActivityResultContracts // <-- Vamos precisar no Onboarding
+import androidx.activity.result.contract.ActivityResultContracts
 
 // Imports do Compose para UI (Layout, Botões, Texto, etc.)
 import androidx.compose.foundation.layout.*
@@ -41,8 +41,8 @@ import androidx.work.WorkManager
 import java.util.concurrent.TimeUnit
 
 // --- NOSSOS NOVOS IMPORTS DE NAVEGAÇÃO ---
-import androidx.navigation.NavController // <-- NOVO IMPORT
-import androidx.navigation.NavHostController // <-- NOVO IMPORT
+import androidx.navigation.NavController
+import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
@@ -60,38 +60,50 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            OlhaAÁguaTheme {
+            val context = LocalContext.current
+            val repository = remember(context) { SettingsRepository(context) }
 
-                // --- NOSSO ROTEADOR (NavHost) ATUALIZADO ---
+            // Lê o tema salvo (ex: "Sistema", "Claro", "Escuro")
+            val temaEscolhido by repository.appThemeFlow.collectAsState(initial = null)
 
-                val context = LocalContext.current
-                val repository = remember(context) { SettingsRepository(context) }
-                val onboardingConcluido by repository.onboardingConcluidoFlow.collectAsState(initial = null)
+            // --- A CORREÇÃO ESTÁ AQUI ---
+
+            // 1. Coletamos o state
+            val onboardingConcluido by repository.onboardingConcluidoFlow.collectAsState(initial = null)
+
+            // 2. SÓ renderizamos quando os dois valores (tema E onboarding)
+            //    forem carregados pela primeira vez.
+            if (temaEscolhido != null && onboardingConcluido != null) {
+
+                // 3. Nós "lembramos" o startDestination INICIAL.
+                //    Como 'remember' não tem chaves (keys), ele só roda UMA VEZ.
+                //    Esta variável 'startDest' NUNCA mais vai mudar,
+                //    mesmo se 'onboardingConcluido' mudar para 'true'
+                //    no meio do fluxo de onboarding.
+                val startDest = remember {
+                    if (onboardingConcluido == true) Routes.PRINCIPAL else Routes.ONBOARDING
+                }
+
                 val navController = rememberNavController()
 
-                if (onboardingConcluido != null) {
-
-                    val startDestination = if (onboardingConcluido == true) Routes.PRINCIPAL else Routes.ONBOARDING
-
+                OlhaAÁguaTheme(temaEscolhido = temaEscolhido!!) {
+                    // 4. Usamos a variável "lembrada" (travada)
                     NavHost(
                         navController = navController,
-                        startDestination = startDestination
+                        startDestination = startDest
                     ) {
 
                         // Rota 1: Onboarding
                         composable(Routes.ONBOARDING) {
                             OnboardingTela1(
-                                // Passa o "mapa" (navController) para a tela
                                 navController = navController
                             )
                         }
 
-                        // Rota 2: A NOVA TELA DE "AQUECIMENTO"
+                        // Rota 2: Tela de "Aquecimento"
                         composable(Routes.PRIMER) {
                             PermissionPrimerScreen(
                                 onNavigateToPrincipal = {
-                                    // Navega para a tela principal e LIMPA o histórico
-                                    // (Primer e Onboarding) para o usuário não "voltar"
                                     navController.navigate(Routes.PRINCIPAL) {
                                         popUpTo(Routes.ONBOARDING) { inclusive = true }
                                     }
@@ -117,30 +129,27 @@ class MainActivity : ComponentActivity() {
                             )
                         }
                     }
-                } else {
-                    // Tela de "Carregando"
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        CircularProgressIndicator()
-                    }
                 }
-                // --- FIM DO ROTEADOR ---
+            } else {
+                // Tela de "Carregando" inicial (enquanto o tema e o onboarding são lidos)
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator()
+                }
             }
+            // --- FIM DA CORREÇÃO ---
         }
     }
 }
 
-// --- TELA DE ONBOARDING (COM A LÓGICA DE NAVEGAÇÃO CORRIGIDA) ---
+// --- TELA DE ONBOARDING (Sem mudanças) ---
 @Composable
 fun OnboardingTela1(
     modifier: Modifier = Modifier,
-    // REMOVEMOS o 'onOnboardingCompleto' e recebemos o 'navController'
     navController: NavHostController
 ) {
-
-    // --- NOSSAS VARIÁVEIS ---
     var modoSelecionado by remember { mutableStateOf("inicial") }
     var pesoTexto by remember { mutableStateOf("") }
     var metaManualTexto by remember { mutableStateOf("2000") }
@@ -149,14 +158,11 @@ fun OnboardingTela1(
     val scope = rememberCoroutineScope()
     val repository = remember(context) { SettingsRepository(context) }
 
-    // (A lógica de permissão NÃO fica mais aqui, ela está no PermissionPrimerScreen)
-
     Column(
         modifier = modifier.fillMaxSize().padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        // ... (Textos, Botões de Modo, TextFields - tudo igual)
         Text(text = "Qual sua meta diária de água?", style = MaterialTheme.typography.headlineMedium, textAlign = TextAlign.Center)
         Spacer(modifier = Modifier.height(16.dp))
         Text(text = "Não se preocupe se não souber, podemos sugerir uma.", style = MaterialTheme.typography.bodyLarge, textAlign = TextAlign.Center)
@@ -179,15 +185,13 @@ fun OnboardingTela1(
             else -> {}
         }
 
-        // 6. O Botão "PRÓXIMO" (COM A LÓGICA ATUALIZADA)
         Spacer(modifier = Modifier.height(32.dp))
 
         Button(
             enabled = modoSelecionado != "inicial",
             onClick = {
-                // 1. Inicia o salvamento dos dados em segundo plano
+                // A lógica de salvar (em background) continua a mesma
                 scope.launch {
-                    // (Toda a lógica de salvar meta e agendar o WorkManager)
                     val frequenciaSalva = repository.frequenciaLembreteFlow.first()
                     val agendarTrabalho = {
                         val periodicRequest = PeriodicWorkRequest.Builder(
@@ -202,7 +206,7 @@ fun OnboardingTela1(
                         if (peso > 0) {
                             val metaCalculada = peso * 35
                             repository.salvarMetaDiaria(metaCalculada)
-                            repository.marcarOnboardingConcluido()
+                            repository.marcarOnboardingConcluido() // <-- Isso ainda acontece
                             agendarTrabalho()
                         }
                     }
@@ -210,18 +214,16 @@ fun OnboardingTela1(
                         val metaManual = metaManualTexto.toIntOrNull() ?: 0
                         if (metaManual > 0) {
                             repository.salvarMetaDiaria(metaManual)
-                            repository.marcarOnboardingConcluido()
+                            repository.marcarOnboardingConcluido() // <-- Isso ainda acontece
                             agendarTrabalho()
                         }
                     }
                 }
 
-                // 2. AGORA, O BOTÃO "PRÓXIMO" DECIDE PARA ONDE IR
+                // A lógica de navegação (imediata) continua a mesma
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    // Se for Android 13+, NAVEGA PARA O "PRIMER"
                     navController.navigate(Routes.PRIMER)
                 } else {
-                    // Se for Android 12- (sem permissão), NAVEGA DIRETO
                     navController.navigate(Routes.PRINCIPAL) {
                         popUpTo(Routes.ONBOARDING) { inclusive = true }
                     }
@@ -239,7 +241,6 @@ fun OnboardingTela1(
 @Composable
 fun OnboardingTela1Preview() {
     OlhaAÁguaTheme {
-        // Criamos um "controlador de navegação" falso para o preview
         val navController = rememberNavController()
         OnboardingTela1(navController = navController)
     }
