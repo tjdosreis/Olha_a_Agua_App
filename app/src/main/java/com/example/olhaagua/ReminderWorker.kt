@@ -1,6 +1,9 @@
 package com.example.olhaagua
 
-import android.R // <-- IMPORTANTE: Precisamos do 'R' do Android
+// Importe o R do NOSSO app
+import com.example.olhaagua.R
+
+// Imports do Android (Note que 'android.R' NÃO está aqui)
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -15,7 +18,7 @@ import kotlinx.coroutines.flow.first
 import java.util.Calendar
 import java.util.Date
 
-// Este é o nosso "Trabalhador" (VERSÃO DE PRODUÇÃO com ÍCONE PLACEHOLDER "i")
+// Este é o nosso "Trabalhador" (VERSÃO FINAL COM O ÍCONE CORRETO)
 class ReminderWorker(
     private val context: Context,
     workerParams: WorkerParameters
@@ -27,19 +30,24 @@ class ReminderWorker(
     }
 
     override suspend fun doWork(): Result {
-        // ... (A lógica do doWork está 100% correta)
+
         val settingsRepo = SettingsRepository(context)
         val waterLogDao = AppDatabase.getDatabase(context).waterLogDao()
+
+        // ... (lógica para pegar hojeInicio e hojeFim) ...
         val calendar = Calendar.getInstance()
         calendar.set(Calendar.HOUR_OF_DAY, 0); calendar.set(Calendar.MINUTE, 0); calendar.set(Calendar.SECOND, 0); calendar.set(Calendar.MILLISECOND, 0)
         val hojeInicio = calendar.time
         calendar.set(Calendar.HOUR_OF_DAY, 23); calendar.set(Calendar.MINUTE, 59); calendar.set(Calendar.SECOND, 59); calendar.set(Calendar.MILLISECOND, 999)
         val hojeFim = calendar.time
+
         val metaDiaria = settingsRepo.metaDiariaFlow.first()
         val totalBebidoHoje = waterLogDao.getTotalAmountForPeriod(hojeInicio, hojeFim).first() ?: 0
+
         if (totalBebidoHoje < metaDiaria) {
             enviarNotificacao(totalBebidoHoje, metaDiaria)
         }
+
         return Result.success()
     }
 
@@ -47,49 +55,61 @@ class ReminderWorker(
         val notificationManager =
             context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
-        // ... (Criação do Canal está correta)
+        // Cria o Canal (sem mudanças)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
-                CHANNEL_ID, "Lembretes de Água", NotificationManager.IMPORTANCE_HIGH
+                CHANNEL_ID,
+                "Lembretes de Água",
+                NotificationManager.IMPORTANCE_HIGH
             ).apply {
                 description = "Notificações para lembrar de beber água"
             }
             notificationManager.createNotificationChannel(channel)
         }
 
-        // --- 1. CRIA A AÇÃO DO BOTÃO (Correto) ---
+        // --- 1. CRIA A AÇÃO DO BOTÃO ---
         val add250Intent = Intent(context, NotificationActionReceiver::class.java).apply {
             action = NotificationActionReceiver.ACTION_ADD_250
         }
+
         val add250PendingIntent: PendingIntent = PendingIntent.getBroadcast(
-            context, 0, add250Intent,
+            context,
+            0,
+            add250Intent,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
 
-        // --- 2. PREPARA O ÍCONE GRANDE (Correto) ---
+        // --- 2. PREPARA OS ÍCONES ---
+
+        // Pega nosso ícone colorido (mipmap) e transforma em Bitmap
         val largeIcon = BitmapFactory.decodeResource(
             context.resources,
-            com.example.olhaagua.R.mipmap.ic_launcher_round // Usa o R do NOSSO app
+            R.mipmap.ic_launcher_round // Pega o ícone redondo do app
         )
 
-        // --- 3. CONSTRÓI A NOTIFICAÇÃO (Usando o ícone "i" que sabemos que funciona) ---
-        val notificacao = NotificationCompat.Builder(context, CHANNEL_ID)
-            // --- O CONSERTO (PLACEHOLDER) ---
-            .setSmallIcon(android.R.drawable.ic_dialog_info) // <-- O ícone "i"
+        // --- 3. CONSTRÓI A NOTIFICAÇÃO (COM O ÍCONE CORRETO) ---
 
-            .setLargeIcon(largeIcon) // O ícone colorido (está correto)
+        val notificacao = NotificationCompat.Builder(context, CHANNEL_ID)
+            // --- O CONSERTO (Ícone Pequeno) ---
+            // Usa a silhueta do copo que criamos manualmente
+            .setSmallIcon(R.drawable.ic_notification_copo)
+
+            // --- O POLIMENTO (Ícone Grande) ---
+            .setLargeIcon(largeIcon) // <-- Usa o ícone colorido do app
+
             .setContentTitle("Hora de se hidratar!")
             .setContentText("Sua meta é $meta ml. Você já bebeu $total ml hoje.")
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
             .addAction(
-                // Usa o ícone "+" embutido do Android
-                android.R.drawable.ic_input_add,
+                // Reusa a silhueta do copo no botão
+                R.drawable.ic_notification_copo,
                 "+250 ml",
                 add250PendingIntent
             )
             .build()
 
+        // Envia a notificação
         notificationManager.notify(NOTIFICATION_ID, notificacao)
     }
 }
