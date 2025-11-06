@@ -41,27 +41,20 @@ class ReminderWorker(
         calendar.set(Calendar.HOUR_OF_DAY, 23); calendar.set(Calendar.MINUTE, 59); calendar.set(Calendar.SECOND, 59); calendar.set(Calendar.MILLISECOND, 999)
         val hojeFim = calendar.time
 
-        // --- NOSSA NOVA MUDANÇA (Início) ---
-
         // 1. Pega os limites salvos (em minutos)
         val inicioMinutos = settingsRepo.periodoAtivoInicioFlow.first()
         val fimMinutos = settingsRepo.periodoAtivoFimFlow.first()
 
         // 2. Pega a hora atual (em minutos)
-        // Precisamos pegar uma nova instância para ter a hora/minuto corretos de AGORA
         val calendarAgora = Calendar.getInstance()
         val agoraMinutos = calendarAgora.get(Calendar.HOUR_OF_DAY) * 60 + calendarAgora.get(Calendar.MINUTE)
 
         // 3. Verifica se estamos DENTRO do período ativo
-        // (ex: 480 (8h) e 1320 (22h). Se 'agoraMinutos' for 500 (8h20), 500 in 480..1320 = true)
         val isPeriodoAtivo = agoraMinutos in inicioMinutos..fimMinutos
-
-        // --- FIM DA MUDANÇA ---
 
         val metaDiaria = settingsRepo.metaDiariaFlow.first()
         val totalBebidoHoje = waterLogDao.getTotalAmountForPeriod(hojeInicio, hojeFim).first() ?: 0
 
-        // --- CONDIÇÃO ATUALIZADA ---
         // Só envia notificação se a meta não foi batida E estamos no período ativo
         if (totalBebidoHoje < metaDiaria && isPeriodoAtivo) {
             enviarNotificacao(totalBebidoHoje, metaDiaria)
@@ -86,31 +79,53 @@ class ReminderWorker(
             notificationManager.createNotificationChannel(channel)
         }
 
-        // --- 1. CRIA AÇÃO DO BOTÃO ---
+        // --- 1. CRIA A AÇÃO DO BOTÃO (+250ml) ---
         val add250Intent = Intent(context, NotificationActionReceiver::class.java).apply {
             action = NotificationActionReceiver.ACTION_ADD_250
         }
 
         val add250PendingIntent: PendingIntent = PendingIntent.getBroadcast(
             context,
-            0,
+            0, // Request code 0
             add250Intent,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
 
-        // --- 2. PREPARA OS ÍCONES ---
+        // --- 2. CRIA A AÇÃO DE CLIQUE (Abrir o App) ---
+        // (Esta é a nossa correção)
+        val openAppIntent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+        }
+
+        val openAppPendingIntent: PendingIntent = PendingIntent.getActivity(
+            context,
+            1, // Request code 1 (diferente do broadcast)
+            openAppIntent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+        // --- FIM DA CORREÇÃO ---
+
+
+        // --- 3. PREPARA OS ÍCONES ---
         val largeIcon = BitmapFactory.decodeResource(
             context.resources,
             R.mipmap.ic_launcher_round // Pega o ícone redondo do app
         )
 
-        // --- 3. CONSTRÓI A NOTIFICAÇÃO ---
+        // --- 4. CONSTRÓI A NOTIFICAÇÃO (COM A CORREÇÃO) ---
         val notificacao = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification_copo)
-            .setLargeIcon(largeIcon) // <-- Usa o ícone colorido do app
+            .setLargeIcon(largeIcon)
             .setContentTitle("Hora de se hidratar!")
             .setContentText("Sua meta é $meta ml. Você já bebeu $total ml hoje.")
+
+            // --- AQUI ESTÁ A CORREÇÃO ---
+            // Define o que acontece ao clicar na notificação
+            .setContentIntent(openAppPendingIntent)
+            // --- FIM DA CORREÇÃO ---
+
             .setPriority(NotificationCompat.PRIORITY_HIGH)
+            // .setAutoCancel(true) faz a notificação sumir quando clicada
             .setAutoCancel(true)
             .addAction(
                 R.drawable.ic_notification_copo,
