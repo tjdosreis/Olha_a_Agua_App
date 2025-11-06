@@ -381,4 +381,4 @@ class TelaConfiguracoesViewModelFactory(
         }
         throw IllegalArgumentException("Unknown ViewModel class")
     }
-}
+}   
