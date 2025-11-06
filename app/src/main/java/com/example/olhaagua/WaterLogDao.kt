@@ -3,6 +3,7 @@ package com.example.olhaagua
 import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.Query
+import androidx.room.Delete // <-- NOVO IMPORT
 import kotlinx.coroutines.flow.Flow
 import java.util.Date
 
@@ -13,6 +14,13 @@ interface WaterLogDao {
     // @Insert ensina o Room a inserir um novo registro
     @Insert
     suspend fun insert(log: WaterLog)
+
+    // --- NOSSA NOVA MUDANÇA ---
+    // @Delete ensina o Room a excluir um item.
+    // Ele identifica o item pela sua PrimaryKey (o 'id')
+    @Delete
+    suspend fun delete(log: WaterLog)
+    // --- FIM DA MUDANÇA ---
 
     // @Query permite escrever SQL para buscar dados
     // Esta função nos dará um Flow (lista) de todos os registros

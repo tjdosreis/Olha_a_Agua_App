@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 
 // Imports do Compose (Layout)
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,14 +20,19 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed // <-- MUDANÇA: de 'items' para 'itemsIndexed'
+import androidx.compose.foundation.lazy.itemsIndexed
+// --- NOVOS IMPORTS ---
+import androidx.compose.foundation.lazy.rememberLazyListState
+// --- FIM DOS NOVOS IMPORTS ---
 
 // Imports do Compose (UI)
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Divider // <-- NOVO IMPORT
+import androidx.compose.material3.Divider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -34,6 +40,10 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxValue
+import androidx.compose.material3.rememberSwipeToDismissBoxState
+
 
 // Imports do Compose (Runtime e Animação)
 import androidx.compose.animation.animateColorAsState
@@ -42,6 +52,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+// --- NOVOS IMPORTS ---
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+// --- FIM DOS NOVOS IMPORTS ---
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -49,11 +64,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-
-// Import do nosso Tema (com acento!)
 import com.example.olhaagua.ui.theme.OlhaAÁguaTheme
-
-// Imports do Kotlin Coroutines e Datas
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
@@ -70,7 +81,7 @@ class TelaPrincipalViewModel(
     private val settingsRepo: SettingsRepository,
     private val waterLogDao: WaterLogDao
 ) : ViewModel() {
-    // ... (Todo o código do ViewModel que já tínhamos)
+
     private val hojeInicio: Date
     private val hojeFim: Date
 
@@ -107,17 +118,22 @@ class TelaPrincipalViewModel(
             waterLogDao.insert(log)
         }
     }
+
+    fun deletarRegistro(log: WaterLog) {
+        viewModelScope.launch {
+            waterLogDao.delete(log)
+        }
+    }
 }
 
 // Classe de dados para representar o "Estado" da UI
-// (Sem mudanças aqui)
 data class TelaPrincipalUiState(
     val metaDiaria: Int = 0,
     val totalBebidoHoje: Int = 0,
     val historicoDeHoje: List<WaterLog> = emptyList()
 )
 
-// --- A TELA EM SI (COMPOSABLE - ATUALIZADA!) ---
+// --- A TELA EM SI (COMPOSABLE - VERSÃO FINAL) ---
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TelaPrincipal(
@@ -131,6 +147,26 @@ fun TelaPrincipal(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val timeFormatter = remember { SimpleDateFormat("HH:mm", Locale.getDefault()) }
+
+    // --- NOSSA NOVA MUDANÇA (Início) ---
+    // 1. Criamos um estado para o LazyColumn
+    val listState = rememberLazyListState()
+    // 2. Criamos uma variável para lembrar o tamanho anterior da lista
+    var previousListSize by remember { mutableStateOf(uiState.historicoDeHoje.size) }
+
+    // 3. Este bloco é executado sempre que o tamanho da lista mudar
+    LaunchedEffect(uiState.historicoDeHoje.size) {
+        val currentListSize = uiState.historicoDeHoje.size
+        // 4. Se o novo tamanho for MAIOR, significa que adicionamos um item
+        if (currentListSize > previousListSize) {
+            // 5. Rolamos a lista (com animação) para o item 0 (o topo)
+            listState.animateScrollToItem(index = 0)
+        }
+        // 6. Atualizamos o "tamanho anterior" para a próxima comparação
+        previousListSize = currentListSize
+    }
+    // --- FIM DA MUDANÇA ---
+
 
     Scaffold(
         topBar = {
@@ -156,9 +192,8 @@ fun TelaPrincipal(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
 
-            // --- CÍRCULO DE PROGRESSO ---
+            // --- CÍRCULO DE PROGRESSO (Sem mudanças) ---
             Spacer(modifier = Modifier.height(32.dp))
-            // ... (O código do Círculo de Progresso fica aqui, sem mudanças)
             val progresso = if (uiState.metaDiaria > 0) {
                 uiState.totalBebidoHoje.toFloat() / uiState.metaDiaria.toFloat()
             } else { 0.0f }
@@ -186,7 +221,9 @@ fun TelaPrincipal(
                 }
             }
 
-            // --- BOTÕES DE AÇÃO ---
+            // --- BOTÕES DE AÇÃO (Sem mudanças) ---
+            // A lógica de rolagem agora é automática (no LaunchedEffect)
+            // então não precisamos mudar os botões.
             Spacer(modifier = Modifier.height(32.dp))
             Text(
                 text = "Adicionar consumo:",
@@ -208,44 +245,109 @@ fun TelaPrincipal(
 
             Spacer(modifier = Modifier.height(32.dp))
 
-            // --- ATUALIZAÇÃO: LISTA DE HISTÓRICO COM DIVISOR ---
+            // --- LISTA DE HISTÓRICO (COM SWIPE E BOTÃO DELETAR) ---
             Text(
                 text = "Histórico de hoje:",
                 style = MaterialTheme.typography.titleMedium
             )
             Spacer(modifier = Modifier.height(8.dp))
 
-            LazyColumn(modifier = Modifier.fillMaxWidth()) {
-                // MUDANÇA: Usamos 'itemsIndexed' para saber qual é o último item
-                itemsIndexed(uiState.historicoDeHoje) { index, log ->
-                    Column { // Um Column para conter a Linha E o Divisor
-                        // Desenha um item da lista
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 8.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text(
-                                text = "+ ${log.amount} ml",
-                                style = MaterialTheme.typography.bodyLarge
-                            )
-                            Text(
-                                text = timeFormatter.format(log.timestamp),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
+            LazyColumn(
+                modifier = Modifier.fillMaxWidth(),
+                // --- NOSSA NOVA MUDANÇA ---
+                state = listState // <-- Conectamos o estado à lista
+                // --- FIM DA MUDANÇA ---
+            ) {
 
-                        // --- SUA SUGESTÃO (A LINHA SUTIL) ---
-                        // Adiciona o divisor se NÃO for o último item da lista
-                        if (index < uiState.historicoDeHoje.lastIndex) {
-                            Divider(
-                                color = MaterialTheme.colorScheme.outlineVariant, // Cinza sutil
-                                modifier = Modifier.padding(horizontal = 16.dp) // Não toca as bordas
-                            )
+                itemsIndexed(
+                    items = uiState.historicoDeHoje,
+                    key = { _, log -> log.id }
+                ) { index, log ->
+
+                    val dismissState = rememberSwipeToDismissBoxState(
+                        confirmValueChange = { dismissValue ->
+                            if (dismissValue == SwipeToDismissBoxValue.EndToStart) {
+                                viewModel.deletarRegistro(log)
+                                true
+                            } else {
+                                false
+                            }
+                        },
+                        positionalThreshold = { it * 0.25f }
+                    )
+
+                    SwipeToDismissBox(
+                        state = dismissState,
+                        enableDismissFromStartToEnd = false,
+                        enableDismissFromEndToStart = true,
+
+                        // O FUNDO VERMELHO (O que aparece por baixo)
+                        backgroundContent = {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(vertical = 8.dp)
+                                    .let {
+                                        if (index < uiState.historicoDeHoje.lastIndex) {
+                                            it.padding(bottom = 1.dp)
+                                        } else {
+                                            it
+                                        }
+                                    }
+                                    .background(MaterialTheme.colorScheme.error),
+                                contentAlignment = Alignment.CenterEnd,
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Delete,
+                                    contentDescription = "Excluir",
+                                    tint = MaterialTheme.colorScheme.onError,
+                                    modifier = Modifier.padding(end = 24.dp)
+                                )
+                            }
                         }
-                        // --- FIM DA SUGESTÃO ---
+                    ) {
+                        // O CONTEÚDO FRONTAL (O que o usuário vê)
+                        Column(
+                            modifier = Modifier.background(MaterialTheme.colorScheme.background)
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                // Coluna para o texto
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "+ ${log.amount} ml",
+                                        style = MaterialTheme.typography.bodyLarge
+                                    )
+                                    Text(
+                                        text = timeFormatter.format(log.timestamp),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+
+                                // O ÍCONE 'X' (Dica Visual)
+                                IconButton(onClick = { viewModel.deletarRegistro(log) }) {
+                                    Icon(
+                                        imageVector = Icons.Default.Close,
+                                        contentDescription = "Remover registro",
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+
+                            // Divisor (sem mudança)
+                            if (index < uiState.historicoDeHoje.lastIndex) {
+                                Divider(
+                                    color = MaterialTheme.colorScheme.outlineVariant,
+                                    modifier = Modifier.padding(horizontal = 16.dp)
+                                )
+                            }
+                        }
                     }
                 }
             }
