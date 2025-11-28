@@ -28,6 +28,10 @@ interface WaterLogDao {
     @Query("SELECT * FROM water_log WHERE timestamp BETWEEN :startTime AND :endTime ORDER BY timestamp DESC")
     fun getLogsForPeriod(startTime: Date, endTime: Date): Flow<List<WaterLog>>
 
+    // Busca TODOS os registros, do mais recente para o mais antigo
+    @Query("SELECT * FROM water_log ORDER BY timestamp DESC")
+    fun getAllLogs(): Flow<List<WaterLog>>
+
     // Esta função soma a coluna 'amount' para um período
     // Retorna Int? (pode ser nulo se não houver registros)
     @Query("SELECT SUM(amount) FROM water_log WHERE timestamp BETWEEN :startTime AND :endTime")
