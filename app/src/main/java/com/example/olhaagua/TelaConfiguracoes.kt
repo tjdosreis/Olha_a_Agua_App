@@ -21,9 +21,15 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.FilterChip // <-- Import correto
-import androidx.compose.material3.FilterChipDefaults // <-- Import correto
-import androidx.compose.material.icons.filled.Check // <-- Import correto
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material.icons.filled.Check
+// --- NOVOS IMPORTS PARA O DROPDOWN ---
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.TextField
+// --- FIM DOS NOVOS IMPORTS ---
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -51,6 +57,7 @@ import java.util.concurrent.TimeUnit
 import com.example.olhaagua.ReminderWorker
 
 // --- O CÉREBRO DA TELA (VIEWMODEL) ---
+// (Sem mudanças aqui, ele já está pronto)
 class TelaConfiguracoesViewModel(
     private val settingsRepo: SettingsRepository
 ) : ViewModel() {
@@ -110,8 +117,8 @@ fun TelaConfiguracoes(
     val frequenciaAtual = viewModel.frequenciaState.collectAsState()
     val inicioAtivoAtual = viewModel.inicioAtivoState.collectAsState()
     val fimAtivoAtual = viewModel.fimAtivoState.collectAsState()
-
     val temaAtual = viewModel.appThemeState.collectAsState()
+
     var temaSelecionado by remember(temaAtual.value) { mutableStateOf(temaAtual.value) }
     val opcoesTema = listOf("Sistema", "Claro", "Escuro")
 
@@ -121,12 +128,24 @@ fun TelaConfiguracoes(
     var frequenciaTexto by remember(frequenciaAtual.value) {
         mutableStateOf(frequenciaAtual.value.toString())
     }
+
+    // --- NOSSAS NOVAS MUDANÇAS (Início) ---
+    // Os estados de texto (inicioTexto/fimTexto) são mantidos,
+    // pois eles guardarão o valor selecionado (ex: "8")
     var inicioTexto by remember(inicioAtivoAtual.value) {
         mutableStateOf((inicioAtivoAtual.value / 60).toString())
     }
     var fimTexto by remember(fimAtivoAtual.value) {
         mutableStateOf((fimAtivoAtual.value / 60).toString())
     }
+
+    // Estados para controlar se os menus estão abertos
+    var isInicioExpanded by remember { mutableStateOf(false) }
+    var isFimExpanded by remember { mutableStateOf(false) }
+
+    // A lista de opções (0-23)
+    val horas = (0..23).map { it.toString() }
+    // --- FIM DAS MUDANÇAS ---
 
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -178,7 +197,7 @@ fun TelaConfiguracoes(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
 
-            // --- Bloco 3: Período Ativo ---
+            // --- Bloco 3: Período Ativo (COM DROPDOWNS) ---
             Spacer(modifier = Modifier.height(8.dp))
             Text(
                 text = "Período Ativo (Não incomodar)",
@@ -189,29 +208,86 @@ fun TelaConfiguracoes(
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                OutlinedTextField(
-                    value = inicioTexto,
-                    onValueChange = { inicioTexto = it },
-                    label = { Text("Início (HH)") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                // --- DROPDOWN 1 (INÍCIO) ---
+                ExposedDropdownMenuBox(
+                    expanded = isInicioExpanded,
+                    onExpandedChange = { isInicioExpanded = it },
                     modifier = Modifier.weight(1f)
-                )
+                ) {
+                    TextField(
+                        value = "$inicioTexto:00", // Mostra "8:00"
+                        onValueChange = {}, // Vazio, pois é readOnly
+                        readOnly = true,
+                        label = { Text("Início (HH)") },
+                        trailingIcon = {
+                            ExposedDropdownMenuDefaults.TrailingIcon(expanded = isInicioExpanded)
+                        },
+                        colors = ExposedDropdownMenuDefaults.textFieldColors(),
+                        modifier = Modifier
+                            .menuAnchor() // Conecta o campo ao menu
+                            .fillMaxWidth()
+                    )
+                    ExposedDropdownMenu(
+                        expanded = isInicioExpanded,
+                        onDismissRequest = { isInicioExpanded = false }
+                    ) {
+                        horas.forEach { hora ->
+                            DropdownMenuItem(
+                                text = { Text("$hora:00") },
+                                onClick = {
+                                    inicioTexto = hora // Atualiza o estado
+                                    isInicioExpanded = false // Fecha o menu
+                                }
+                            )
+                        }
+                    }
+                }
+
                 Text(text = "até")
-                OutlinedTextField(
-                    value = fimTexto,
-                    onValueChange = { fimTexto = it },
-                    label = { Text("Fim (HH)") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+
+                // --- DROPDOWN 2 (FIM) ---
+                ExposedDropdownMenuBox(
+                    expanded = isFimExpanded,
+                    onExpandedChange = { isFimExpanded = it },
                     modifier = Modifier.weight(1f)
-                )
+                ) {
+                    TextField(
+                        value = "$fimTexto:00", // Mostra "22:00"
+                        onValueChange = {}, // Vazio, pois é readOnly
+                        readOnly = true,
+                        label = { Text("Fim (HH)") },
+                        trailingIcon = {
+                            ExposedDropdownMenuDefaults.TrailingIcon(expanded = isFimExpanded)
+                        },
+                        colors = ExposedDropdownMenuDefaults.textFieldColors(),
+                        modifier = Modifier
+                            .menuAnchor()
+                            .fillMaxWidth()
+                    )
+                    ExposedDropdownMenu(
+                        expanded = isFimExpanded,
+                        onDismissRequest = { isFimExpanded = false }
+                    ) {
+                        horas.forEach { hora ->
+                            DropdownMenuItem(
+                                text = { Text("$hora:00") },
+                                onClick = {
+                                    fimTexto = hora // Atualiza o estado
+                                    isFimExpanded = false // Fecha o menu
+                                }
+                            )
+                        }
+                    }
+                }
             }
             Text(
-                text = "Insira as horas no formato 24h (ex: 8 para 8h, 22 para 22h).",
+                text = "Selecione a hora de início e fim do período ativo.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+            // --- FIM DA MUDANÇA ---
 
-            // --- Bloco 4: Aparência (MOVEMOS PARA CÁ) ---
+            // --- Bloco 4: Aparência ---
             Spacer(modifier = Modifier.height(8.dp))
             Text(
                 text = "Aparência",
@@ -225,7 +301,6 @@ fun TelaConfiguracoes(
                     val isSelected = tema == temaSelecionado
                     FilterChip(
                         selected = isSelected,
-                        // ESTA LINHA CORRIGE A FUNCIONALIDADE
                         onClick = { temaSelecionado = tema },
                         label = { Text(tema) },
                         enabled = true,
@@ -240,12 +315,9 @@ fun TelaConfiguracoes(
                         } else {
                             null
                         },
-                        // REMOVEMOS A LÓGICA DE 'border' PARA USAR O PADRÃO
                     )
                 }
             }
-            // --- FIM DA MUDANÇA ---
-
 
             Spacer(modifier = Modifier.height(16.dp))
 
@@ -263,6 +335,9 @@ fun TelaConfiguracoes(
                     viewModel.salvarMetaDiaria(novaMeta)
                     viewModel.salvarFrequencia(novaFrequencia)
 
+                    // A LÓGICA DE SALVAR NÃO MUDA
+                    // Ela já lê 'inicioTexto' e 'fimTexto'
+                    // e os converte para Int
                     val horaInicio = inicioTexto.toIntOrNull()?.coerceIn(0, 23) ?: (inicioAtivoAtual.value / 60)
                     val horaFim = fimTexto.toIntOrNull()?.coerceIn(0, 23) ?: (fimAtivoAtual.value / 60)
                     val inicioMinutos = horaInicio * 60
@@ -306,4 +381,4 @@ class TelaConfiguracoesViewModelFactory(
         }
         throw IllegalArgumentException("Unknown ViewModel class")
     }
-}
+}   
